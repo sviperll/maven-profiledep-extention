@@ -5,14 +5,10 @@
  */
 package com.github.sviperll.maven.profiledep;
 
-import java.util.ArrayList;
+import com.github.sviperll.maven.profiledep.DependencyResolutionContext.DependencyResolution;
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.maven.model.Profile;
 import org.apache.maven.model.building.ModelProblem;
 import org.apache.maven.model.building.ModelProblemCollector;
@@ -30,7 +26,7 @@ import org.codehaus.plexus.component.annotations.Requirement;
 public class DependenciesProfileSelector implements ProfileSelector {
     @Requirement(role = ProfileSelector.class)
     List<ProfileSelector> profileSelectors;
-
+    
     private ProfileSelector defaultProfileSelector;
 
     private void init() {
@@ -46,16 +42,16 @@ public class DependenciesProfileSelector implements ProfileSelector {
     @Override
     public List<Profile> getActiveProfiles(Collection<Profile> availableProfiles, ProfileActivationContext context, ModelProblemCollector problems) {
         init();
-        List<Profile> activeProfiles = new ArrayList<Profile>();
-        DependencyResolver resolver = new DependencyResolver(availableProfiles, activeProfiles, new HashSet<String>());
+        DependencyResolutionContext resolutionContext = new DependencyResolutionContext(availableProfiles);
+        List<Profile> activatedProfiles = defaultProfileSelector.getActiveProfiles(availableProfiles, context, problems);
         try {
-            resolver.resolve(defaultProfileSelector.getActiveProfiles(availableProfiles, context, problems));
+            DependencyResolution resolution = resolutionContext.resolve(activatedProfiles, context.getActiveProfileIds());
+            return resolution.activeProfiles();
         } catch (ResolutionException ex) {
             ModelProblemCollectorRequest request = new ModelProblemCollectorRequest(ModelProblem.Severity.FATAL, ModelProblem.Version.BASE);
             request.setMessage(ex.getMessage());
             problems.add(request);
+            return Collections.emptyList();
         }
-        return activeProfiles;
     }
-
 }
