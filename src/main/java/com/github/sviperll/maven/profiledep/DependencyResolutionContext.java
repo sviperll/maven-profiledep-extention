@@ -5,6 +5,7 @@
  */
 package com.github.sviperll.maven.profiledep;
 
+import com.github.sviperll.maven.profiledep.util.TreeBuilder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -28,31 +29,22 @@ class DependencyResolutionContext {
     }
     
     DependencyResolution resolve(List<Profile> activatedProfiles, Collection<String> unresolvedProfileIDs) throws ResolutionException {
-        List<Profile> newActiveProfiles = new ArrayList<Profile>();
-        Map<String, Set<Profile>> newActiveProfileIDs = new TreeMap<String, Set<Profile>>();
-        Map<String, Set<Profile>> newForbiddenProfileIDs = new TreeMap<String, Set<Profile>>();
-        Set<String> newUnresolvedProfileIDs = new TreeSet<String>();
-        newUnresolvedProfileIDs.addAll(unresolvedProfileIDs);
-        DependencyResolution resolution = new DependencyResolution(0, newActiveProfiles, newActiveProfileIDs, newForbiddenProfileIDs, newUnresolvedProfileIDs);
-        for (Profile profile: activatedProfiles) {
-            resolution = resolution.resolve(profile);
-        }
-        return resolution;
+        DependencyResolution resolution = new DependencyResolution();
+        resolution.unresolvedProfileIDs.addAll(unresolvedProfileIDs);
+        resolution.discoveredProfiles.addAll(activatedProfiles);
+        return resolution.resolve();
     }
 
     class DependencyResolution {
-        private final List<Profile> activeProfiles;
-        private final Map<String, Set<Profile>> activeProfileIDs;
-        private final Map<String, Set<Profile>> forbiddenProfileIDs;
-        private final Collection<String> unresolvedProfileIDs;
-        private final int indent;
+        private final List<Profile> activeProfiles = new ArrayList<Profile>();
+        private final Map<String, Set<Profile>> activeProfileIDs = new TreeMap<String, Set<Profile>>();
+        private final Map<String, Set<Profile>> forbiddenProfileIDs = new TreeMap<String, Set<Profile>>();
+        private final Set<String> unresolvedProfileIDs = new TreeSet<String>();
+        private final Set<String> unresolvableProfileIDs = new TreeSet<String>();
+        private final Set<String> ambigousProfileIDs = new TreeSet<String>();
+        private List<Profile> discoveredProfiles = new ArrayList<Profile>();
         
-        DependencyResolution(int indent, List<Profile> activeProfiles, Map<String, Set<Profile>> activeProfileIDs, Map<String, Set<Profile>> forbiddenProfileIDs, Collection<String> unresolvedProfileIDs) {
-            this.indent = indent;
-            this.activeProfiles = activeProfiles;
-            this.activeProfileIDs = activeProfileIDs;
-            this.forbiddenProfileIDs = forbiddenProfileIDs;
-            this.unresolvedProfileIDs = unresolvedProfileIDs;
+        DependencyResolution() {
         }
 
         List<Profile> activeProfiles() {
@@ -65,12 +57,23 @@ class DependencyResolutionContext {
             unresolvedProfileIDs.addAll(profileIDs);
         }
 
-        private DependencyResolution resolve(Profile discoveredProfile) throws ResolutionException {
-            activateWithoutProcessing(discoveredProfile);
-            processValidationErrors();
-            collectDependencies(discoveredProfile);
-            processValidationErrors();
-            return resolveUnresolved();
+        private DependencyResolution resolve() throws ResolutionException {
+            for (;;) {
+                List<Profile> profiles = discoveredProfiles;
+                discoveredProfiles = new ArrayList<Profile>();
+                for (Profile profile: profiles) {
+                    activateWithoutProcessing(profile);
+                }
+                processValidationErrors();
+                for (Profile profile: profiles) {
+                    collectDependencies(profile);
+                }
+                processValidationErrors();
+                if (unresolvedProfileIDs.isEmpty())
+                    break;
+                resolveUnambigous();
+            }
+            return resolveAmbigous();
         }
 
         private void activateWithoutProcessing(Profile profile) {
@@ -78,6 +81,8 @@ class DependencyResolutionContext {
             Collection<String> profileIDs = profileIDs(profile);
             for (String profileID: profileIDs) {
                 unresolvedProfileIDs.remove(profileID);
+                ambigousProfileIDs.remove(profileID);
+                unresolvableProfileIDs.remove(profileID);
                 Set<Profile> providedBy = activeProfileIDs.get(profileID);
                 if (providedBy == null) {
                     providedBy = new HashSet<Profile>();
@@ -108,53 +113,41 @@ class DependencyResolutionContext {
 
         private void processValidationErrors() throws ResolutionException {
             boolean isError = false;
-            IndentationStringBuilder message = new IndentationStringBuilder();
+            TreeBuilder<String> resolutionTreeBuilder = TreeBuilder.createInstance(".");
             for (String profileID: activeProfileIDs.keySet()) {
-                IndentationStringBuilder problem = new IndentationStringBuilder();
-                boolean currentProfileIDHasError = false;
-                Set<Profile> providedBy = activeProfileIDs.get(profileID);
-                if (providedBy != null && providedBy.size() > 1) {
-                    currentProfileIDHasError = true;
-                    Iterator<Profile> iterator = providedBy.iterator();
-                    if (iterator.hasNext()) {
-                        problem.startNewLine(indent + 1);
-                        problem.append(" * more than one profile provides it: ");
-                        problem.append(iterator.next().getId());
-                        while (iterator.hasNext()) {
-                            problem.append(", ");
-                            problem.append(iterator.next().getId());
-                        }
-                    }
-                }
-                Set<Profile> forbiddenBy = forbiddenProfileIDs.get(profileID);
-                if (forbiddenBy != null && !forbiddenBy.isEmpty()) {
-                    if (currentProfileIDHasError) {
-                        problem.append(",");
-                    }
-                    currentProfileIDHasError = true;
-                    Iterator<Profile> iterator = forbiddenBy.iterator();
-                    if (iterator.hasNext()) {
-                        problem.startNewLine(indent + 1);
-                        problem.append(" * it conflicts with some profiles: ");
-                        problem.append(iterator.next().getId());
-                        while (iterator.hasNext()) {
-                            problem.append(", ");
-                            problem.append(iterator.next().getId());
-                        }
-                    }
-                }
-                if (currentProfileIDHasError) {
-                    if (isError) {
-                        message.append(";");
-                    }
+                try {
+                    processValidationErrors(profileID);
+                } catch (ResolutionException ex) {
                     isError = true;
-                    message.startNewLine(indent);
-                    message.append("Can't provide ").append(profileID).append(": ");
-                    message.append(problem.toString());
+                    resolutionTreeBuilder.subtree("Can't provide " + profileID, ex.tree().children());
                 }
             }
             if (isError)
-                throw new ResolutionException(message.toString());
+                throw new ResolutionException(resolutionTreeBuilder.build());
+        }
+
+        private void processValidationErrors(String profileID) throws ResolutionException {
+            boolean isError = false;
+            TreeBuilder<String> resulutionTreeBuilder = TreeBuilder.createInstance("Can't provide " + profileID);
+            Set<Profile> providedBy = activeProfileIDs.get(profileID);
+            if (providedBy != null && providedBy.size() > 1) {
+                isError = true;
+                resulutionTreeBuilder.beginSubtree("more than one profile provides it");
+                for (Profile profile: providedBy) {
+                    resulutionTreeBuilder.node(profile.getId());
+                }
+                resulutionTreeBuilder.endSubtree();
+            }
+            Set<Profile> forbiddenBy = forbiddenProfileIDs.get(profileID);
+            if (forbiddenBy != null && !forbiddenBy.isEmpty()) {
+                isError = true;
+                resulutionTreeBuilder.beginSubtree("it conflicts with some profiles");
+                for (Profile profile: forbiddenBy) {
+                    resulutionTreeBuilder.node(profile.getId());
+                }
+            }
+            if (isError)
+                throw new ResolutionException(resulutionTreeBuilder.build());
         }
 
         private void collectDependencies(Profile profile) {
@@ -180,8 +173,32 @@ class DependencyResolutionContext {
             }
         }
 
-        private DependencyResolution resolveUnresolved() throws ResolutionException {
-            Iterator<String> iterator = unresolvedProfileIDs.iterator();
+        private void resolveUnambigous() throws ResolutionException {
+            Set<String> profileIDs = new TreeSet<String>();
+            profileIDs.addAll(unresolvedProfileIDs);
+            for (String profileID: profileIDs) {
+                List<Profile> candidates = new ArrayList<Profile>();
+                for (Profile profile: availableProfiles) {
+                    Set<String> candidateProfileIDs = profileIDs(profile);
+                    if (candidateProfileIDs.contains(profileID)) {
+                        candidates.add(profile);
+                    }
+                }
+                if (candidates.isEmpty()) {
+                    unresolvableProfileIDs.add(profileID);
+                    unresolvedProfileIDs.remove(profileID);
+                } else if (candidates.size() > 1) {
+                    ambigousProfileIDs.add(profileID);
+                    unresolvedProfileIDs.remove(profileID);
+                } else {
+                    Profile candidate = candidates.get(0);
+                    discoveredProfiles.add(candidate);
+                }
+            }
+        }
+
+        private DependencyResolution resolveAmbigous() throws ResolutionException {
+            Iterator<String> iterator = ambigousProfileIDs.iterator();
             if (!iterator.hasNext()) {
                 return this;
             } else {
@@ -193,46 +210,40 @@ class DependencyResolutionContext {
                         candidates.add(profile);
                     }
                 }
-                if (candidates.isEmpty()) {
-                    return this;
-                } else if (candidates.size() == 1) {
-                    return resolve(candidates.get(0));
-                } else {
-                    IndentationStringBuilder message = new IndentationStringBuilder();
-                    message.startNewLine(indent);
-                    message.append("Can't resolve ").append(profileID);
-                    for (Profile profile: candidates) {
-                        try {
-                            DependencyResolution resolution = createChild();
-                            return resolution.resolve(profile);
-                        } catch (ResolutionException ex) {
-                            message.startNewLine(indent + 1);
-                            message.append(" to ").append(profile.getId()).append(":\n").append(ex.getMessage());
-                        }
+                TreeBuilder<String> resolutionTreeBuilder = TreeBuilder.createInstance(".");
+                resolutionTreeBuilder.beginSubtree("Can't resolve " + profileID);
+                for (Profile profile: candidates) {
+                    try {
+                        DependencyResolution resolution = createChild(profile);
+                        return resolution.resolve();
+                    } catch (ResolutionException ex) {
+                        resolutionTreeBuilder.subtree(" to " + profile.getId(), ex.tree().children());
                     }
-                    throw new ResolutionException(message.toString());
                 }
+                resolutionTreeBuilder.endSubtree();
+                throw new ResolutionException(resolutionTreeBuilder.build());
             }
         }
 
-        protected DependencyResolution createChild() {
-            List<Profile> newActiveProfiles = new ArrayList<Profile>();
-            newActiveProfiles.addAll(this.activeProfiles);
-            Map<String, Set<Profile>> newActiveProfileIDs = new TreeMap<String, Set<Profile>>();
+        protected DependencyResolution createChild(Profile profile) {
+            DependencyResolution child = new DependencyResolution();
             for (Map.Entry<String, Set<Profile>> entry: this.activeProfileIDs.entrySet()) {
                 Set<Profile> value = new HashSet<Profile>();
                 value.addAll(entry.getValue());
-                newActiveProfileIDs.put(entry.getKey(), value);
+                child.activeProfileIDs.put(entry.getKey(), value);
             }
-            Map<String, Set<Profile>> newForbiddenProfileIDs = new TreeMap<String, Set<Profile>>();
+            child.activeProfiles.addAll(this.activeProfiles);
+            child.ambigousProfileIDs.addAll(this.ambigousProfileIDs);
+            child.discoveredProfiles.addAll(this.discoveredProfiles);
             for (Map.Entry<String, Set<Profile>> entry: this.forbiddenProfileIDs.entrySet()) {
                 Set<Profile> value = new HashSet<Profile>();
                 value.addAll(entry.getValue());
-                newForbiddenProfileIDs.put(entry.getKey(), value);
+                child.forbiddenProfileIDs.put(entry.getKey(), value);
             }
-            Set<String> newUnresolvedProfileIDs = new TreeSet<String>();
-            newUnresolvedProfileIDs.addAll(this.unresolvedProfileIDs);
-            return new DependencyResolution(indent + 2, newActiveProfiles, newActiveProfileIDs, newForbiddenProfileIDs, newUnresolvedProfileIDs);
+            child.unresolvableProfileIDs.addAll(this.unresolvableProfileIDs);
+            child.unresolvedProfileIDs.addAll(this.unresolvedProfileIDs);
+            child.discoveredProfiles.add(profile);
+            return child;
         }
     }
 }

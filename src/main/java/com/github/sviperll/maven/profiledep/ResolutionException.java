@@ -5,12 +5,27 @@
  */
 package com.github.sviperll.maven.profiledep;
 
+import com.github.sviperll.maven.profiledep.util.Tree;
+
 /**
  *
  * @author vir
  */
+@SuppressWarnings("serial")
 class ResolutionException extends Exception {
-    ResolutionException(String message) {
-        super(message);
+
+    private final Tree<String> tree;
+
+    ResolutionException(Tree<String> tree) {
+        super("Resolution error");
+        this.tree = tree;
+    }
+
+    Tree<String> tree() {
+        return tree;
+    }
+
+    String renderResolutionTree() {
+        return new ResolutionTree(tree).toString();
     }
 }

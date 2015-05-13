@@ -49,7 +49,7 @@ public class DependenciesProfileSelector implements ProfileSelector {
             return resolution.activeProfiles();
         } catch (ResolutionException ex) {
             ModelProblemCollectorRequest request = new ModelProblemCollectorRequest(ModelProblem.Severity.FATAL, ModelProblem.Version.BASE);
-            request.setMessage(ex.getMessage());
+            request.setMessage("\n" + ex.renderResolutionTree());
             problems.add(request);
             return Collections.emptyList();
         }
