@@ -226,10 +226,13 @@ Here is `.mvn/extensions.xml`
   <extension>
     <groupId>com.github.sviperll</groupId>
     <artifactId>maven-profiledep-extention</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.2</version>
   </extension>
 </extensions>
 ````
+
+Version 0.2 of maven-profiledep-extention is available from maven central.
+No additional configuration is required.
 
 ### Older maven versions ###
 
