@@ -8,7 +8,7 @@
 
     <groupId>com.github.sviperll</groupId>
     <artifactId>maven-profiledep-extention</artifactId>
-    <version>0.2</version>
+    <version>0.3-SNAPSHOT</version>
     <name>maven-profiledep-extention</name>
 
     <properties>
@@ -20,7 +20,7 @@
         <connection>scm:git:git@github.com:sviperll/maven-profiledep-extention.git</connection>
         <url>scm:git:git@github.com:sviperll/maven-profiledep-extention.git</url>
         <developerConnection>scm:git:git@github.com:sviperll/maven-profiledep-extention.git</developerConnection>
-      <tag>maven-profiledep-extention-0.2</tag>
+      <tag>HEAD</tag>
   </scm>
 
     <dependencies>
