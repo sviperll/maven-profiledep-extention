@@ -5,7 +5,6 @@
  */
 package com.github.sviperll.maven.profiledep;
 
-import com.github.sviperll.maven.profiledep.DependencyResolution;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -15,33 +14,20 @@ import org.apache.maven.model.building.ModelProblemCollector;
 import org.apache.maven.model.building.ModelProblemCollectorRequest;
 import org.apache.maven.model.profile.ProfileActivationContext;
 import org.apache.maven.model.profile.ProfileSelector;
-import org.codehaus.plexus.component.annotations.Component;
-import org.codehaus.plexus.component.annotations.Requirement;
 
 /**
  *
  * @author vir
  */
-@Component(role = ProfileSelector.class)
 public class DependenciesProfileSelector implements ProfileSelector {
-    @Requirement(role = ProfileSelector.class)
-    List<ProfileSelector> profileSelectors;
-    
-    private ProfileSelector defaultProfileSelector;
+    private final ProfileSelector defaultProfileSelector;
 
-    private void init() {
-        if (defaultProfileSelector == null) {
-            for (ProfileSelector profileSelector: profileSelectors) {
-                if (profileSelector.getClass() != DependenciesProfileSelector.class) {
-                    defaultProfileSelector = profileSelector;
-                }
-            }
-        }
+    DependenciesProfileSelector(ProfileSelector defaultProfileSelector) {
+        this.defaultProfileSelector = defaultProfileSelector;
     }
 
     @Override
     public List<Profile> getActiveProfiles(Collection<Profile> availableProfiles, ProfileActivationContext context, ModelProblemCollector problems) {
-        init();
         List<Profile> activatedProfiles = defaultProfileSelector.getActiveProfiles(availableProfiles, context, problems);
         try {
             DependencyResolution resolution = DependencyResolution.resolve(availableProfiles, activatedProfiles, context.getActiveProfileIds());

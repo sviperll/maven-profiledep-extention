@@ -1,7 +1,11 @@
 maven-profiledep-extention
 ==========================
 
+Activate profiles from pom.xml.
 Specify dependencies between different profiles in maven build.
+
+You can modularize you build configuration by spliting it into small profiles
+and declaring dependencies between profiles.
 
 You can see active profiles like this:
 
@@ -9,7 +13,7 @@ You can see active profiles like this:
 $ mvn help:active-profiles
 ````
 
-Let's pretend that this will produce follwing output:
+Let's pretend that this will produce following output:
 
 ````
 The following profiles are active:
@@ -26,7 +30,7 @@ active.
 $ mvn '-Pjava7,bootclasspath' help:active-profiles
 ````
 
-Instead 3 profiles are activated:
+Instead 3 profiles are activated when this extension is enabled:
 
 ````
 The following profiles are active:
@@ -133,8 +137,78 @@ Here is an example of profile definitions:
 </project>
 ````
 
-Currently dependencies works across single pom.xml. You can't depend
+Profile dependencies work across single pom.xml file. You can't depend
 on profile from parent pom.
+
+Configuring profiles from pom.xml
+---------------------------------
+
+You can declare a set of interdependent profiles in your parent pom.xml
+and activate them in inherited pom. Special `activateparentprofiles` property is
+used for it.
+
+````xml
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.github.sviperll</groupId>
+        <artifactId>sviperll-maven-parent-6</artifactId>
+        <version>5</version>
+    </parent>
+    <groupId>group</groupId>
+    <artifactId>myartifact</artifactId>
+    <version>version</version>
+    <!-- ... -->
+    <properties>
+        <activateparentprofiles>java6,nexus-deploy</activateparentprofiles>
+        <!-- ... -->
+    </properties>
+    <!-- ... -->
+</project>
+````
+
+`java6` and `nexus-deploy` are two profiles defined in
+`sviperll-maven-parent-6` pom.
+With such declaration given profiles are always activated when building
+`myartifact`.
+Other profiles from `sviperll-maven-parent-6` can be activated as
+required by profile dependencies.
+
+`activateparentprofiles` affects only profiles from parent pom
+and parent of parent pom etc, but never affects current pom.
+
+`activateparentprofiles` can contain negative directives, like this:
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>group</groupId>
+        <artifactId>myparent</artifactId>
+        <version>parentversion</version>
+    </parent>
+    <groupId>group</groupId>
+    <artifactId>myartifact</artifactId>
+    <version>version</version>
+    <!-- ... -->
+    <properties>
+        <activateparentprofiles>java6,!mustache</activateparentprofiles>
+        <!-- ... -->
+    </properties>
+    <!-- ... -->
+</project>
+````
+
+In this example you can activate `mustache` profile from `myartifact` pom, like
+this:
+
+````
+$ mvn -P mustache verify
+````
+
+This command will activate `mustache` profile from `myartifact` pom, but
+never `mustache` profile from `myparent` pom.
+
+This can be used to override profile from parent pom, for example.
 
 Installation
 ------------
