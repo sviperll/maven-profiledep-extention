@@ -5,7 +5,7 @@
  */
 package com.github.sviperll.maven.profiledep;
 
-import com.github.sviperll.maven.profiledep.DependencyResolutionContext.DependencyResolution;
+import com.github.sviperll.maven.profiledep.DependencyResolution;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -42,12 +42,11 @@ public class DependenciesProfileSelector implements ProfileSelector {
     @Override
     public List<Profile> getActiveProfiles(Collection<Profile> availableProfiles, ProfileActivationContext context, ModelProblemCollector problems) {
         init();
-        DependencyResolutionContext resolutionContext = new DependencyResolutionContext(availableProfiles);
         List<Profile> activatedProfiles = defaultProfileSelector.getActiveProfiles(availableProfiles, context, problems);
         try {
-            DependencyResolution resolution = resolutionContext.resolve(activatedProfiles, context.getActiveProfileIds());
+            DependencyResolution resolution = DependencyResolution.resolve(availableProfiles, activatedProfiles, context.getActiveProfileIds());
             return resolution.activeProfiles();
-        } catch (ResolutionException ex) {
+        } catch (ResolutionValidationException ex) {
             ModelProblemCollectorRequest request = new ModelProblemCollectorRequest(ModelProblem.Severity.FATAL, ModelProblem.Version.BASE);
             request.setMessage("\n" + ex.renderResolutionTree());
             problems.add(request);

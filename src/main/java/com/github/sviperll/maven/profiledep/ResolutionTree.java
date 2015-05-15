@@ -36,7 +36,7 @@ public class ResolutionTree {
         List<String> prefix = new ArrayList<String>();
 
         private Renderer(String string) {
-            prefix.add(" > ");
+            prefix.add("> ");
         }
         private void renderHead(Tree<String> tree) {
             for (String s: prefix) {

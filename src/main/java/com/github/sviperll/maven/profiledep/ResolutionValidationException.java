@@ -12,11 +12,11 @@ import com.github.sviperll.maven.profiledep.util.Tree;
  * @author vir
  */
 @SuppressWarnings("serial")
-class ResolutionException extends Exception {
+class ResolutionValidationException extends Exception {
 
     private final Tree<String> tree;
 
-    ResolutionException(Tree<String> tree) {
+    ResolutionValidationException(Tree<String> tree) {
         super("Resolution error");
         this.tree = tree;
     }
